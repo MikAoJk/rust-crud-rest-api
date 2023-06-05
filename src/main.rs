@@ -19,6 +19,15 @@ struct User {
 //DATABASE URL
 const DB_URL: &str = env!("DATABASE_URL");
 
+/*
+const DB_URL: &str = match env!("DATABASE_URL") {
+    Ok(val) => env!("DATABASE_URL"),
+    Err(e) => "postgres://postgres:postgres@db:5432/postgres".to_string(),
+};
+*/
+
+
+
 //cosntants
 const OK_RESPONSE: &str = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n";
 const NOT_FOUND: &str = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
@@ -31,6 +40,7 @@ fn main() {
         println!("Error setting database");
         return;
     }
+    println!("DB_URL is set to {}", DB_URL);
 
     //start server and print port
     let listener = TcpListener::bind(format!("0.0.0.0:8080")).unwrap();

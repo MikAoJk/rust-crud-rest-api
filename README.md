@@ -20,6 +20,23 @@ docker --version
 ```
 
 #### Running the application locally
+##### 🏗️ Build the Rust app image
+Creating a docker image should be as simple as
+``` bash
+docker build -t rustapp .
+```
+
+##### 🐘 Run the Postgres container
+```bash script
+docker-compose up -d db
+```
+
+##### 🏗️ Build the Rust app image
+Creating a docker image should be as simple as
+``` bash
+docker build -t rustapp .
+```
+
 ##### 🐘 Run the Postgres container
 ```bash script
 docker-compose up -d db
