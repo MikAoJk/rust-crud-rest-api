@@ -98,7 +98,7 @@ fn handle_client(mut stream: TcpStream) {
     }
 }
 
-/handle post request
+//handle post request
 fn handle_post_request(request: &str) -> (String, String) {
     match (get_user_request_body(&request), Client::connect(DB_URL, NoTls)) {
         (Ok(user), Ok(mut client)) => {
