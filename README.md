@@ -54,25 +54,23 @@ curl --location --request POST 'http://localhost:8080/users' \
 --data-raw '{"name": "aaa","email": "aaa@mail"}'
 ```
 
-### Build
+### Build code
 Build the code without running it
 ```bash script
 cargo build
 ```
 
-### Run
+### Run code
 Build and run the code, showing the output
 ```bash script
 cargo run
 ```
 
-### Test
+### Test code
 Build the code and run all the tests
 ```bash script
 cargo test
 ```
-
-
 
 ## Contact
 This project is maintained by [MikAoJk](CODEOWNERS)
