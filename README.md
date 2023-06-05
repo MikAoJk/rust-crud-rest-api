@@ -19,18 +19,60 @@ Make sure you have cargo installed using this command:
 docker --version
 ```
 
+#### Running the application locally
+##### 🐘 Run the Postgres container
+```bash script
+docker-compose up -d db
+```
+
+##### 🏗️ Build the Rust app image
+```bash script
+docker compose build
+```
+
+##### 👟 Run the Rust Container
+```bash script
+docker compose up rustapp
+```
+
+##### 🧪 Test the applications endpoints
+For testing the endpoints
+You need a tool to send a request and to inspect the repsonse
+A tool you can use is Postman: https://www.postman.com/downloads/
+
+Request to get the users:
+```bash script
+curl --location --request GET 'http://localhost:8080/users'
+```
+Example of a response:
+`{[]}`
+
+Create a new user
+```bash script
+curl --location --request POST 'http://localhost:8080/users' \
+--header 'Content-Type: application/json' \
+--data-raw '{"name": "aaa","email": "aaa@mail"}'
+```
+
 ### Build
 Build the code without running it
-`cargo build`
+```bash script
+cargo build
+```
 
 ### Run
 Build and run the code, showing the output
-`cargo run`
+```bash script
+cargo run
+```
 
 ### Test
 Build the code and run all the tests
-`cargo test`
+```bash script
+cargo test
+```
+
+
 
 ## Contact
-
 This project is maintained by [MikAoJk](CODEOWNERS)
