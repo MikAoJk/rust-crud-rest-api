@@ -2,7 +2,6 @@ use postgres::{Client, NoTls};
 use postgres::Error as PostgresError;
 use std::net::{TcpListener, TcpStream};
 use std::io::{Read, Write};
-use std::env;
 
 #[macro_use]
 extern crate serde_derive;
@@ -17,15 +16,8 @@ struct User {
 
 
 //DATABASE URL
-const DB_URL: &str = env!("DATABASE_URL");
-
-/*
-const DB_URL: &str = match env!("DATABASE_URL") {
-    Ok(val) => env!("DATABASE_URL"),
-    Err(e) => "postgres://postgres:postgres@db:5432/postgres".to_string(),
-};
-*/
-
+//const DB_URL: &str = env!("DATABASE_URL");
+const DB_URL: &str = "postgres://postgres:postgres@db:5432/postgres";
 
 
 //cosntants

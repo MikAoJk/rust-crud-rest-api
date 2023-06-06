@@ -14,24 +14,19 @@ cargo --version
 ```
 
 #### Docker
-Make sure you have cargo installed using this command:
+Make sure you have docker installed using this command:
 ```bash script
 docker --version
 ```
 
-#### Running the application locally
-##### 🏗️ Build the Rust app image
-Creating a docker image should be as simple as
-``` bash
-docker build -t rustapp .
-```
-
-##### 🐘 Run the Postgres container
+#### Curl
+Make sure you have curl installed using this command:
 ```bash script
-docker-compose up -d db
+curl --version
 ```
 
-##### 🏗️ Build the Rust app image
+#### Running the application locally
+#####  Create docker image of app
 Creating a docker image should be as simple as
 ``` bash
 docker build -t rustapp .
@@ -57,30 +52,57 @@ For testing the endpoints
 You need a tool to send a request and to inspect the repsonse
 A tool you can use is Postman: https://www.postman.com/downloads/
 
-Request to get the users:
+Request to get the all the users:
 ```bash script
 curl --location --request GET 'http://localhost:8080/users'
 ```
 Example of a response:
-`{[]}`
+`[ 
+    {
+    "id": 1,
+    "name": "aaa",
+    "email": "aaa@mail"
+    },
+    {
+    "id": 2,
+    "name": "bbb",
+    "email": "bbb@mail"
+    }
+]`
 
-Create a new user
+Request to create a new user
 ```bash script
 curl --location --request POST 'http://localhost:8080/users' \
 --header 'Content-Type: application/json' \
 --data-raw '{"name": "aaa","email": "aaa@mail"}'
 ```
 
+Request to get one specific user:
+```bash script
+curl --location --request GET 'http://localhost:8080/users/2'
+```
+Example of a response:
+`{
+"name": "new",
+"email": "new@mail"
+}`
+
+Request to update a user
+```bash script
+curl --location --request PUT 'http://localhost:8080/users/2' \
+--header 'Content-Type: application/json' \
+--data-raw '{"name": "new","email": "new@mail"}'
+```
+
+Request to delte a user
+```bash script
+curl --location --request DELETE 'http://localhost:8080/users/3'
+```
+
 ### Build code
 Build the code without running it
 ```bash script
 cargo build
-```
-
-### Run code
-Build and run the code, showing the output
-```bash script
-cargo run
 ```
 
 ### Test code
