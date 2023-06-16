@@ -25,7 +25,20 @@ Make sure you have curl installed using this command:
 curl --version
 ```
 
+### Build code
+Build the code without running it
+```bash script
+cargo build
+```
+
+### Test code
+Build the code and run all the tests
+```bash script
+cargo test
+```
+
 #### Running the application locally
+
 #####  Create docker image of app
 Creating a docker image should be as simple as
 ``` bash
@@ -94,18 +107,6 @@ curl --location --request PUT 'http://localhost:8080/users/2' \
 Request to delte a user
 ```bash script
 curl --location --request DELETE 'http://localhost:8080/users/3'
-```
-
-### Build code
-Build the code without running it
-```bash script
-cargo build
-```
-
-### Test code
-Build the code and run all the tests
-```bash script
-cargo test
 ```
 
 ## Contact
