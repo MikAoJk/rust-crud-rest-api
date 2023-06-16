@@ -48,9 +48,6 @@ docker compose up rustapp
 ```
 
 ##### 🧪 Test the applications endpoints
-For testing the endpoints
-You need a tool to send a request and to inspect the repsonse
-A tool you can use is Postman: https://www.postman.com/downloads/
 
 Request to get the all the users:
 ```bash script
