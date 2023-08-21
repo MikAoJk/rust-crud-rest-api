@@ -1,8 +1,10 @@
 mod database;
 mod handle_client;
+mod environment_variables;
 
-use crate::database::{set_database};
+use crate::database::{create_database_client, set_init_database_table};
 use std::net::{TcpListener};
+use crate::environment_variables::get_environment_variables;
 use crate::handle_client::handle_client;
 
 #[macro_use]
@@ -18,20 +20,24 @@ struct User {
 
 //main function
 fn main() {
-    //Set Database
-    if let Err(_) = set_database() {
-        println!("Error setting database");
+    let environment_variables = get_environment_variables();
+
+    //Set Database client
+    let client = create_database_client(environment_variables.databse_url.clone());
+
+    if let Err(_) = set_init_database_table(client) {
+        println!("Error setting database init tables");
         return;
     }
 
     //start server and print port
-    let listener = TcpListener::bind(format!("0.0.0.0:8080")).unwrap();
-    println!("Server listening on port 8080");
+    let listener = TcpListener::bind(environment_variables.server_adress_and_port.clone()).unwrap();
+    println!("Server listening on {}", environment_variables.server_adress_and_port);
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                handle_client(stream);
+                handle_client(stream, environment_variables.databse_url);
             }
             Err(e) => {
                 println!("Unable to connect: {}", e);

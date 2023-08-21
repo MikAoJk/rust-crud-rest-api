@@ -37,6 +37,12 @@ Build the code and run all the tests
 cargo test
 ```
 
+### Run code
+Build the code and run all the tests
+```bash script
+cargo run
+```
+
 #### Running the application locally
 
 #####  Create docker image of app

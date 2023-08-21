@@ -1,13 +1,8 @@
 use postgres::{Client, NoTls};
 use postgres::Error as PostgresError;
 
-//DATABASE URL
-//const DB_URL: &str = env!("DATABASE_URL");
-pub const DB_URL: &str = "postgres://postgres:postgres@db:5432/postgres";
-
-//db setup
-pub fn set_database() -> Result<(), PostgresError> {
-    let mut client = Client::connect(DB_URL, NoTls)?;
+pub fn set_init_database_table(postgresclient: Client) -> Result<(), PostgresError> {
+    let mut client = postgresclient;
     client.batch_execute(
         "
         CREATE TABLE IF NOT EXISTS users (
@@ -18,4 +13,8 @@ pub fn set_database() -> Result<(), PostgresError> {
     "
     )?;
     Ok(())
+}
+
+pub fn create_database_client(databse_url: &str) -> Client {
+    return Client::connect(databse_url.as_ref(), NoTls).unwrap();
 }

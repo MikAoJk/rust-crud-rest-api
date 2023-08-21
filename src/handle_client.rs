@@ -2,7 +2,6 @@ use postgres::{Client, NoTls};
 use std::net::{TcpStream};
 use std::io::{Read, Write};
 
-use crate::database::DB_URL;
 use crate::User;
 
 
@@ -11,7 +10,7 @@ const OK_RESPONSE: &str = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n
 const NOT_FOUND: &str = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
 const INTERNAL_ERROR: &str = "HTTP/1.1 500 INTERNAL ERROR\r\n\r\n";
 
-pub fn handle_client(mut stream: TcpStream) {
+pub fn handle_client(mut stream: TcpStream, databse_url: &str) {
     let mut buffer = [0; 1024];
     let mut request = String::new();
 
@@ -20,11 +19,11 @@ pub fn handle_client(mut stream: TcpStream) {
             request.push_str(String::from_utf8_lossy(&buffer[..size]).as_ref());
 
             let (status_line, content) = match &*request {
-                r if r.starts_with("POST /users") => handle_post_request(r),
-                r if r.starts_with("GET /users/") => handle_get_request(r),
-                r if r.starts_with("GET /users") => handle_get_all_request(r),
-                r if r.starts_with("PUT /users/") => handle_put_request(r),
-                r if r.starts_with("DELETE /users/") => handle_delete_request(r),
+                r if r.starts_with("POST /users") => handle_post_request(r,databse_url.clone()),
+                r if r.starts_with("GET /users/") => handle_get_request(r, databse_url.clone()),
+                r if r.starts_with("GET /users") => handle_get_all_request(r, databse_url.clone()),
+                r if r.starts_with("PUT /users/") => handle_put_request(r, databse_url.clone()),
+                r if r.starts_with("DELETE /users/") => handle_delete_request(r, databse_url.clone()),
                 _ => (NOT_FOUND.to_string(), "404 not found".to_string()),
             };
 
@@ -46,8 +45,8 @@ fn get_user_request_body(request: &str) -> Result<User, serde_json::Error> {
 
 
 //handle post request
-fn handle_post_request(request: &str) -> (String, String) {
-    match (get_user_request_body(&request), Client::connect(DB_URL, NoTls)) {
+fn handle_post_request(request: &str, databse_url: &str) -> (String, String) {
+    match (get_user_request_body(&request), Client::connect(databse_url, NoTls)) {
         (Ok(user), Ok(mut client)) => {
             client
                 .execute(
@@ -63,8 +62,8 @@ fn handle_post_request(request: &str) -> (String, String) {
 }
 
 //handle get request
-fn handle_get_request(request: &str) -> (String, String) {
-    match (get_id(&request).parse::<i32>(), Client::connect(DB_URL, NoTls)) {
+fn handle_get_request(request: &str, databse_url: &str) -> (String, String) {
+    match (get_id(&request).parse::<i32>(), Client::connect(databse_url, NoTls)) {
         (Ok(id), Ok(mut client)) =>
             match client.query_one("SELECT * FROM users WHERE id = $1", &[&id]) {
                 Ok(row) => {
@@ -84,8 +83,8 @@ fn handle_get_request(request: &str) -> (String, String) {
 }
 
 //handle get all request
-fn handle_get_all_request(_request: &str) -> (String, String) {
-    match Client::connect(DB_URL, NoTls) {
+fn handle_get_all_request(_request: &str, databse_url: &str) -> (String, String) {
+    match Client::connect(databse_url, NoTls) {
         Ok(mut client) => {
             let mut users = Vec::new();
 
@@ -104,12 +103,12 @@ fn handle_get_all_request(_request: &str) -> (String, String) {
 }
 
 //handle put request
-fn handle_put_request(request: &str) -> (String, String) {
+fn handle_put_request(request: &str, databse_url: &str) -> (String, String) {
     match
     (
         get_id(&request).parse::<i32>(),
         get_user_request_body(&request),
-        Client::connect(DB_URL, NoTls),
+        Client::connect(databse_url, NoTls),
     )
     {
         (Ok(id), Ok(user), Ok(mut client)) => {
@@ -127,8 +126,8 @@ fn handle_put_request(request: &str) -> (String, String) {
 }
 
 //handle delete request
-fn handle_delete_request(request: &str) -> (String, String) {
-    match (get_id(&request).parse::<i32>(), Client::connect(DB_URL, NoTls)) {
+fn handle_delete_request(request: &str, databse_url: &str) -> (String, String) {
+    match (get_id(&request).parse::<i32>(), Client::connect(databse_url, NoTls)) {
         (Ok(id), Ok(mut client)) => {
             let rows_affected = client.execute("DELETE FROM users WHERE id = $1", &[&id]).unwrap();
 
