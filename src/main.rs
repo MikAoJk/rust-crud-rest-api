@@ -7,22 +7,10 @@ use std::net::{TcpListener};
 use crate::environment_variables::get_environment_variables;
 use crate::handle_client::handle_client;
 
-#[macro_use]
-extern crate serde_derive;
-
-//Model: User struct with id, name, email
-#[derive(Serialize, Deserialize)]
-struct User {
-    id: Option<i32>,
-    name: String,
-    email: String,
-}
-
 //main function
 fn main() {
     let environment_variables = get_environment_variables();
 
-    //Set Database client
     let client = create_database_client(environment_variables.databse_url.clone());
 
     if let Err(_) = set_init_database_table(client) {

@@ -1,14 +1,20 @@
 use postgres::{Client, NoTls};
 use std::net::{TcpStream};
 use std::io::{Read, Write};
+use serde_derive::{Deserialize, Serialize};
 
-use crate::User;
 
-
-// http constants
 const OK_RESPONSE: &str = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n";
 const NOT_FOUND: &str = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
 const INTERNAL_ERROR: &str = "HTTP/1.1 500 INTERNAL ERROR\r\n\r\n";
+
+
+#[derive(Serialize, Deserialize)]
+struct User {
+    id: Option<i32>,
+    name: String,
+    email: String,
+}
 
 pub fn handle_client(mut stream: TcpStream, databse_url: &str) {
     let mut buffer = [0; 1024];
@@ -33,18 +39,15 @@ pub fn handle_client(mut stream: TcpStream, databse_url: &str) {
     }
 }
 
-//Get id from request URL
 fn get_id(request: &str) -> &str {
     request.split("/").nth(2).unwrap_or_default().split_whitespace().next().unwrap_or_default()
 }
 
-//deserialize user from request body without id
 fn get_user_request_body(request: &str) -> Result<User, serde_json::Error> {
     serde_json::from_str(request.split("\r\n\r\n").last().unwrap_or_default())
 }
 
 
-//handle post request
 fn handle_post_request(request: &str, databse_url: &str) -> (String, String) {
     match (get_user_request_body(&request), Client::connect(databse_url, NoTls)) {
         (Ok(user), Ok(mut client)) => {
@@ -61,7 +64,6 @@ fn handle_post_request(request: &str, databse_url: &str) -> (String, String) {
     }
 }
 
-//handle get request
 fn handle_get_request(request: &str, databse_url: &str) -> (String, String) {
     match (get_id(&request).parse::<i32>(), Client::connect(databse_url, NoTls)) {
         (Ok(id), Ok(mut client)) =>
@@ -82,7 +84,6 @@ fn handle_get_request(request: &str, databse_url: &str) -> (String, String) {
     }
 }
 
-//handle get all request
 fn handle_get_all_request(_request: &str, databse_url: &str) -> (String, String) {
     match Client::connect(databse_url, NoTls) {
         Ok(mut client) => {
@@ -102,7 +103,6 @@ fn handle_get_all_request(_request: &str, databse_url: &str) -> (String, String)
     }
 }
 
-//handle put request
 fn handle_put_request(request: &str, databse_url: &str) -> (String, String) {
     match
     (
@@ -125,7 +125,6 @@ fn handle_put_request(request: &str, databse_url: &str) -> (String, String) {
     }
 }
 
-//handle delete request
 fn handle_delete_request(request: &str, databse_url: &str) -> (String, String) {
     match (get_id(&request).parse::<i32>(), Client::connect(databse_url, NoTls)) {
         (Ok(id), Ok(mut client)) => {

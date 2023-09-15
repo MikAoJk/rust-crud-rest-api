@@ -110,7 +110,7 @@ curl --location --request PUT 'http://localhost:8080/users/2' \
 --data-raw '{"name": "new","email": "new@mail"}'
 ```
 
-Request to delte a user
+Request to delete a user
 ```bash script
 curl --location --request DELETE 'http://localhost:8080/users/3'
 ```
