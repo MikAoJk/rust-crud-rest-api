@@ -7,10 +7,10 @@ pub fn get_environment_variables() -> EnvironmentVariables {
     let server_adress_and_port: &str = "0.0.0.0:8080";
 
 
-    return EnvironmentVariables {
+    EnvironmentVariables {
         databse_url,
         server_adress_and_port
-    };
+    }
 }
 
 fn string_to_static_str(s: String) -> &'static str {

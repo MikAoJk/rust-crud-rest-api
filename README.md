@@ -19,6 +19,12 @@ Make sure you have docker installed using this command:
 docker --version
 ```
 
+#### Docker compose
+Make sure you have docker compose installed using this command:
+```bash script
+docker compose --version
+```
+
 #### Curl
 Make sure you have curl installed using this command:
 ```bash script
@@ -39,31 +45,28 @@ cargo test
 
 ### Run code
 Build the code and run all the tests
+> **Note**
+> This will not work, you need a database to run the application locally se [Run the applicaiton with dockercompose](#🐘--run-the-postgres-container-and-app)
 ```bash script
 cargo run
 ```
 
 #### Running the application locally
 
-#####  Create docker image of app
+##### Create docker image of the app
 Creating a docker image should be as simple as
 ``` bash
 docker build -t rustapp .
 ```
 
-##### 🐘 Run the Postgres container
+##### 🐘 Run the Postgres container and app
 ```bash script
-docker-compose up -d db
+docker compose up 
 ```
 
-##### 🏗️ Build the Rust app image
+##### 🐘 Only run the Postgres container
 ```bash script
-docker compose build
-```
-
-##### 👟 Run the Rust Container
-```bash script
-docker compose up rustapp
+docker compose up db
 ```
 
 ##### 🧪 Test the applications endpoints

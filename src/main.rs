@@ -11,7 +11,7 @@ use crate::handle_client::handle_client;
 fn main() {
     let environment_variables = get_environment_variables();
 
-    let client = create_database_client(environment_variables.databse_url.clone());
+    let client = create_database_client(environment_variables.databse_url);
 
     if let Err(_) = set_init_database_table(client) {
         println!("Error setting database init tables");
@@ -19,7 +19,7 @@ fn main() {
     }
 
     //start server and print port
-    let listener = TcpListener::bind(environment_variables.server_adress_and_port.clone()).unwrap();
+    let listener = TcpListener::bind(environment_variables.server_adress_and_port).unwrap();
     println!("Server listening on {}", environment_variables.server_adress_and_port);
 
     for stream in listener.incoming() {
