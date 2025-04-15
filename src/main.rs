@@ -7,7 +7,6 @@ use std::net::{TcpListener};
 use crate::environment_variables::get_environment_variables;
 use crate::handle_client::handle_client;
 
-//main function
 fn main() {
     let environment_variables = get_environment_variables();
 
