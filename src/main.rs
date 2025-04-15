@@ -17,7 +17,6 @@ fn main() {
         return;
     }
 
-    //start server and print port
     let listener = TcpListener::bind(environment_variables.server_adress_and_port).unwrap();
     println!("Server listening on {}", environment_variables.server_adress_and_port);
 
