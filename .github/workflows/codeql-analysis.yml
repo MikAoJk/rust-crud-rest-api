@@ -22,7 +22,8 @@ jobs:
       fail-fast: false
       matrix:
         language: [ 'rust' ]
-      steps:
+        
+    steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -32,12 +33,12 @@ jobs:
           languages: ${{ matrix.language }}
 
       - name: Setup rust
-      - uses: actions-rs/toolchain@v1
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
 
       - name: Build
-      - uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release --all-features
