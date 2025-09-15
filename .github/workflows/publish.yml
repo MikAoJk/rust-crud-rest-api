@@ -19,7 +19,7 @@ jobs:
           toolchain: stable
           
       - name: Install toml-cli
-      - uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1
         with:
           command: cargo install toml-cli
           
