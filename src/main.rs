@@ -74,7 +74,7 @@ mod tests {
         }
 
         let env = mock_get_environment_variables();
-        let client = failing_create_database_client(env.databse_url.clone());
+        let client = failing_create_database_client("postgres://localhost/fail".to_string());
 
         let db_init_result = mock_set_init_database_table(client);
         assert!(db_init_result.is_err());
