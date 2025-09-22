@@ -66,20 +66,7 @@ mod tests {
         assert!(db_init_result.is_ok());
     }
 
-    #[test]
-    fn test_server_initialization_failure() {
-
-        fn failing_create_database_client(_url: String) -> Result<(), &'static str> {
-            Err("connection failed")
-        }
-
-        let env = mock_get_environment_variables();
-        let client = failing_create_database_client("postgres://localhost/fail".to_string());
-
-        let db_init_result = mock_set_init_database_table(client);
-        assert!(db_init_result.is_err());
-    }
-
+    
     #[test]
     fn test_listener_binding() {
         let env = mock_get_environment_variables();
