@@ -16,10 +16,10 @@ fn mock_database_url() -> String {
     "postgres://localhost/test".to_string()
 }
 
+// Helper to simulate a client sending a request
 fn send_request(request: &str) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
-
 
     let db_url = mock_database_url();
     thread::spawn(move || {
@@ -28,11 +28,28 @@ fn send_request(request: &str) -> String {
         }
     });
 
+
     let mut stream = TcpStream::connect(addr).unwrap();
     stream.write_all(request.as_bytes()).unwrap();
     let mut response = String::new();
     stream.read_to_string(&mut response).unwrap();
     response
+}
+
+#[test]
+fn test_post_user() {
+    setup();
+    let request = "POST /users HTTP/1.1\r\nContent-Type: application/json\r\n\r\n{\"name\":\"Test\",\"email\":\"test@example.com\"}";
+    let response = send_request(request);
+    assert!(response.contains("User created"));
+}
+
+#[test]
+fn test_get_user_not_found() {
+    setup();
+    let request = "GET /users/999 HTTP/1.1\r\n\r\n";
+    let response = send_request(request);
+    assert!(response.contains("User not found") || response.contains("404"));
 }
 
 #[test]
