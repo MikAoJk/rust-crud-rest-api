@@ -66,7 +66,6 @@ fn test_get_user_not_found() {
     let request = "GET /users/999 HTTP/1.1\r\n\r\n";
     let response = send_request(request);
     assert!(response.contains("User not found") || response.contains("404"));
-}
 
     let req = "POST /users HTTP/1.1\r\n\r\n{\"name\":\"Bob\",\"email\":\"bob@example.com\"}";
     let (status, body) = handle_post_request(req, &db_url);
