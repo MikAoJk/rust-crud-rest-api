@@ -1,4 +1,5 @@
 # rust-crud-rest-api
+[![build and test](https://github.com/MikAoJk/rust-crud-rest-api/actions/workflows/build-and-test.yaml/badge.svg?branch=main)](https://github.com/MikAoJk/rust-crud-rest-api/actions/workflows/build-and-test.yaml)
 
 ### Prerequisites
 Make sure you have the rust installed using this command:
