@@ -1,9 +1,8 @@
-name: build and test
+name: build main branch
 on:
-  push
-permissions:
-  contents: read
-  pull-requests: write
+  push:
+    branches:
+      - main
 
 jobs:
   build_and_test:
