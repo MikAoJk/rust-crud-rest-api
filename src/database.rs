@@ -16,5 +16,5 @@ pub fn set_init_database_table(postgresclient: Client) -> Result<(), PostgresErr
 }
 
 pub fn create_database_client(databse_url: &str) -> Client {
-    return Client::connect(databse_url.as_ref(), NoTls).unwrap();
+    Client::connect(databse_url.as_ref(), NoTls).unwrap()
 }
