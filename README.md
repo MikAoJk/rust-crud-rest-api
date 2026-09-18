@@ -63,12 +63,7 @@ docker build -t rustapp .
 
 ##### 🐘 Run the Postgres container and app
 ```bash script
-docker compose up 
-```
-
-##### 🐘 Only run the Postgres container
-```bash script
-docker compose up db
+docker compose up -d
 ```
 
 ##### 🧪 Test the applications endpoints

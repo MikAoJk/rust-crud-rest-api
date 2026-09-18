@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1.96.0-slim AS builder
+FROM rust:1.98.0-slim AS builder
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ RUN cargo build --release
 
 
 # Production stage
-FROM debian:buster-slim
+FROM debian:trixie-slim
 
 WORKDIR /usr/local/bin
 
