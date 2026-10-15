@@ -5,9 +5,8 @@
 2. [docker](../README.md#Docker)
 3. [docker compose](../README.md#Docker-Compose)
 4. [curl](../README.md#Curl)
-
-#### k6
-Make sure you have k6 installed using this command:
+5. k6
+   Make sure you have k6 installed using this command:
 ```bash script
 k6 --version
 ```
