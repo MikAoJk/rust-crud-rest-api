@@ -12,7 +12,7 @@ services:
 
   db:
     container_name: db
-    image: 'postgres:12'
+    image: 'postgres:18'
     ports:
       - '5432:5432'
     environment:
@@ -20,7 +20,7 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=postgres
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 5s

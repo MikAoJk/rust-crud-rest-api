@@ -63,6 +63,10 @@ docker build -t rustapp .
 ```bash script
 docker compose up -d
 ```
+remember to take it down after use:
+```bash script
+docker compose down
+```
 
 ##### 🧪 Test the applications endpoints
 

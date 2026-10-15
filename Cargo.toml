@@ -7,5 +7,5 @@ rust-version = "1.98.0"
 [dependencies]
 postgres = "0.19.14"
 serde = "1.0.229"
-serde_json = "1.0.151"
+serde_json = "1.0.154"
 serde_derive = "1.0.229"
