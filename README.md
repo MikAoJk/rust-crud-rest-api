@@ -3,35 +3,33 @@
 [![build main branch](https://github.com/MikAoJk/rust-crud-rest-api/actions/workflows/main.yaml/badge.svg)](https://github.com/MikAoJk/rust-crud-rest-api/actions/workflows/main.yaml)
 
 ### Prerequisites
-Make sure you have the rust installed using this command:
 #### Rust
+Make sure you have the rust installed using this command:
 ```bash script
 rustc --version
 ```
-
-#### Cargo
-Make sure you have cargo installed using this command:
-```bash script
-cargo --version
-```
+or install it: https://rust-lang.org/tools/install/
 
 #### Docker
 Make sure you have docker installed using this command:
 ```bash script
 docker --version
 ```
+or install it: https://docs.docker.com/engine/install/
 
-#### Docker compose
+#### Docker Compose
 Make sure you have docker compose installed using this command:
 ```bash script
-docker compose --version
+docker compose version
 ```
+or install it: https://docs.docker.com/compose/install/
 
 #### Curl
 Make sure you have curl installed using this command:
 ```bash script
 curl --version
 ```
+or install it: https://curl.se/docs/install.html
 
 ### Build code
 Build the code without running it
@@ -48,7 +46,7 @@ cargo test
 ### Run code
 Build the code and run all the tests
 > **Note**
-> This will not work, you need a database to run the application locally se [Run the applicaiton with dockercompose](#🐘--run-the-postgres-container-and-app)
+> This will not work, you need a database to run the application locally se [Run the applicaiton with docker compose](#Run-the-Postgres-container-and-app)
 ```bash script
 cargo run
 ```
@@ -61,12 +59,19 @@ Creating a docker image should be as simple as
 docker build -t rustapp .
 ```
 
-##### 🐘 Run the Postgres container and app
+##### Run the Postgres container and app
 ```bash script
 docker compose up -d
 ```
 
 ##### 🧪 Test the applications endpoints
+
+Request to create a new user
+```bash script
+curl --location --request POST 'http://localhost:8080/users' \
+--header 'Content-Type: application/json' \
+--data-raw '{"name": "aaa","email": "aaa@mail"}'
+```
 
 Request to get the all the users:
 ```bash script
@@ -86,12 +91,6 @@ Example of a response:
     }
 ]`
 
-Request to create a new user
-```bash script
-curl --location --request POST 'http://localhost:8080/users' \
---header 'Content-Type: application/json' \
---data-raw '{"name": "aaa","email": "aaa@mail"}'
-```
 
 Request to get one specific user:
 ```bash script
@@ -112,8 +111,11 @@ curl --location --request PUT 'http://localhost:8080/users/2' \
 
 Request to delete a user
 ```bash script
-curl --location --request DELETE 'http://localhost:8080/users/3'
+curl --location --request DELETE 'http://localhost:8080/users/1'
 ```
+
+### Perfomance test
+How to run Performance test see [performance-test/README.md](performance-test/README.md)
 
 ## Contact
 This project is maintained by [MikAoJk](CODEOWNERS)
