@@ -73,11 +73,10 @@ fn handle_post_request(
     client: &mut Client,
 ) -> Result<Response, Box<dyn std::error::Error>> {
     let user = get_user_request_body(request)?;
-       let row = client.query_one(
+    let row = client.query_one(
         "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id",
         &[&user.name, &user.email],
     )?;
-    Ok((OK_RESPONSE.to_string(), "User created".to_string()))
     let id: i32 = row.get(0);
     Ok((
         format!(
