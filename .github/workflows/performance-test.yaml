@@ -1,0 +1,59 @@
+name: performance test
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  performance-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+      - name: Setup k6
+        uses: grafana/setup-k6-action@v1
+      - name: Build application image
+        run: docker build -t rustapp .
+      - name: Start application and database
+        run: |
+          docker compose up -d --wait --wait-timeout 120
+          curl --fail --silent --show-error --output /dev/null \
+            --retry 30 --retry-delay 2 --retry-all-errors --max-time 5 \
+            http://localhost:8080/users
+      - name: Run performance test
+        id: performance
+        shell: bash
+        run: |
+          set -o pipefail
+          k6 run --quiet --no-color -e BASE_URL=http://localhost:8080 \
+            performance-test/script.js 2>&1 | tee "$RUNNER_TEMP/performance-test.log"
+      - name: Publish performance summary
+        if: always()
+        env:
+          TEST_OUTCOME: ${{ steps.performance.outcome }}
+        shell: bash
+        run: |
+          {
+            echo '## Performance test'
+            echo
+            printf '**Result:** %s\n\n' "$TEST_OUTCOME"
+            if [ -f "$RUNNER_TEMP/performance-test.log" ]; then
+              echo 'k6 output (last 200 lines; full output is available in the run logs):'
+              echo
+              echo '```text'
+              tail -n 200 "$RUNNER_TEMP/performance-test.log"
+              echo '```'
+            else
+              echo 'No k6 results were produced. Check the setup and application startup logs.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Show application logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Stop application and database
+        if: always()
+        run: docker compose down --volumes
