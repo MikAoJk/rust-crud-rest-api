@@ -76,6 +76,7 @@ curl --location --request POST 'http://localhost:8080/users' \
 --header 'Content-Type: application/json' \
 --data-raw '{"name": "aaa","email": "aaa@mail"}'
 ```
+The response includes a `Location: /users/{id}` header for the created user.
 
 Request to get the all the users:
 ```bash script

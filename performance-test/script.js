@@ -67,21 +67,15 @@ export default function() {
   try {
     const created = http.post(`${baseUrl}/users`, JSON.stringify(user), params('create', 'POST /users'));
     expect(created, 'create', 200, 'User created');
-
-    // POST returns a message, so discover the ID using this iteration's unique email.
-    const listed = http.get(`${baseUrl}/users`, params('list', 'GET /users'));
-    expect(listed, 'list', 200);
-    const users = json(listed, 'list');
-    const matches = Array.isArray(users)
-        ? users.filter((value) => value !== null && value.email === user.email)
-        : [];
-    if (!check(matches, {
-      'list: created user has a unique ID': (values) => values.length === 1
-          && Number.isInteger(values[0].id) && values[0].id > 0,
+    const location = created.headers.Location;
+    const match = /^\/users\/([1-9]\d*)$/.exec(location || '');
+    if (!check(match, {
+      'create: Location identifies the new user': (value) => value !== null
+          && Number.isSafeInteger(Number(value[1])),
     })) {
-      fail('Could not identify the created user in GET /users');
+      fail(`POST /users returned an invalid Location: ${location}`);
     }
-    id = matches[0].id;
+    id = Number(match[1]);
     const url = `${baseUrl}/users/${id}`;
 
     verifyUser(http.get(url, params('read', 'GET /users/:id')), { ...user, id }, 'read');

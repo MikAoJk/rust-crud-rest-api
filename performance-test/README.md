@@ -22,3 +22,7 @@ or install it: https://grafana.com/docs/k6/latest/set-up/install-k6/
 cd performance-test
 k6 run -e BASE_URL=http://localhost:8080 script.js
 ```
+
+The test reads the new user's ID from the POST `/users` `Location` header instead of
+fetching the full `/users` list on every iteration. This keeps `data_received`
+proportional to the number of requests rather than the number of concurrent users.
