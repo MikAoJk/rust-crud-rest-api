@@ -2,9 +2,17 @@ import http from 'k6/http';
 import { sleep, check, fail } from 'k6';
 import exec from 'k6/execution';
 
+
 export const options = {
-  vus: 10,
-  duration: '30s',
+  startVUs: 0,
+  stages: [
+    { duration: '30s', target: 20 }, 
+    { duration: '1m', target: 100 }, 
+    { duration: '2m', target: 100 }, 
+    { duration: '1m', target: 200 },
+    { duration: '2m', target: 200 },
+    { duration: '30s', target: 0 },
+  ],
   thresholds: {
     checks: ['rate==1'],
     http_req_failed: ['rate==0'],
@@ -44,9 +52,9 @@ function verifyUser(response, expected, label) {
   const user = json(response, label);
   if (!check(user, {
     [`${label}: user matches`]: (value) => value !== null
-      && value.id === expected.id
-      && value.name === expected.name
-      && value.email === expected.email,
+        && value.id === expected.id
+        && value.name === expected.name
+        && value.email === expected.email,
   })) {
     fail(`${label} returned unexpected user data: ${response.body}`);
   }
@@ -66,11 +74,11 @@ export default function() {
     expect(listed, 'list', 200);
     const users = json(listed, 'list');
     const matches = Array.isArray(users)
-      ? users.filter((value) => value !== null && value.email === user.email)
-      : [];
+        ? users.filter((value) => value !== null && value.email === user.email)
+        : [];
     if (!check(matches, {
       'list: created user has a unique ID': (values) => values.length === 1
-        && Number.isInteger(values[0].id) && values[0].id > 0,
+          && Number.isInteger(values[0].id) && values[0].id > 0,
     })) {
       fail('Could not identify the created user in GET /users');
     }
@@ -83,13 +91,13 @@ export default function() {
     const updated = http.put(url, JSON.stringify(updatedUser), params('update', 'PUT /users/:id'));
     expect(updated, 'update', 200, 'User updated');
     verifyUser(http.get(url, params('read_updated', 'GET /users/:id')),
-      { ...updatedUser, id }, 'read updated');
+        { ...updatedUser, id }, 'read updated');
   } finally {
     try {
       if (id !== undefined) {
         const url = `${baseUrl}/users/${id}`;
         expect(http.del(url, null, params('delete', 'DELETE /users/:id')),
-          'delete', 200, 'User deleted');
+            'delete', 200, 'User deleted');
         const deletedParams = params('read_deleted', 'GET /users/:id');
         deletedParams.responseCallback = http.expectedStatuses(404);
         expect(http.get(url, deletedParams), 'read deleted', 404, 'User not found');
