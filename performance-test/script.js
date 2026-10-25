@@ -92,7 +92,6 @@ export default function() {
     verifyUser(http.get(url, params('read_updated', 'GET /users/:id')),
         { ...updatedUser, id }, 'read updated');
   } finally {
-    try {
       if (id !== undefined) {
         const url = `${baseUrl}/users/${id}`;
         expect(http.del(url, null, params('delete', 'DELETE /users/:id')),
@@ -101,8 +100,5 @@ export default function() {
         deletedParams.responseCallback = http.expectedStatuses(404);
         expect(http.get(url, deletedParams), 'read deleted', 404, 'User not found');
       }
-    } finally {
-      sleep(1);
-    }
-  }
+    } 
 }
