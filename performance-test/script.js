@@ -100,5 +100,5 @@ export default function() {
         deletedParams.responseCallback = http.expectedStatuses(404);
         expect(http.get(url, deletedParams), 'read deleted', 404, 'User not found');
       }
-    } 
+  }
 }
