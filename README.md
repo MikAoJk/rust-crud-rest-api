@@ -1,6 +1,6 @@
 # rust-crud-rest-api
 
-[![build main branch](https://github.com/MikAoJk/rust-crud-rest-api/actions/workflows/main.yaml/badge.svg)](https://github.com/MikAoJk/rust-crud-rest-api/actions/workflows/main.yaml)
+[![build main](https://github.com/MikAoJk/rust-crud-rest-api/actions/workflows/main.yaml/badge.svg)](https://github.com/MikAoJk/rust-crud-rest-api/actions/workflows/main.yaml)
 
 ### Prerequisites
 #### Rust
