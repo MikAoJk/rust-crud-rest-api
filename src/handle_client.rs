@@ -1,9 +1,11 @@
 use crate::database::DatabasePool;
+use flate2::{Compression, write::GzEncoder};
 use postgres::Client;
 use serde_derive::{Deserialize, Serialize};
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::net::TcpStream;
 
+const MIN_COMPRESSION_SIZE: usize = 1024;
 const OK_RESPONSE: &str = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n";
 const NOT_FOUND: &str = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
 const INTERNAL_ERROR: &str = "HTTP/1.1 500 INTERNAL ERROR\r\n\r\n";
@@ -24,13 +26,75 @@ pub fn handle_client(mut stream: TcpStream, pool: &DatabasePool) {
     match stream.read(&mut buffer) {
         Ok(size) => {
             let request = String::from_utf8_lossy(&buffer[..size]);
-            let (status_line, content) = handle_request(&request, pool);
-            if let Err(error) = stream.write_all(format!("{status_line}{content}").as_bytes()) {
+            let response = handle_request(&request, pool);
+            if let Err(error) = write_response(&mut stream, &request, response) {
                 eprintln!("Unable to write response: {error}");
             }
         }
         Err(error) => eprintln!("Unable to read stream: {error}"),
     }
+}
+
+fn accepts_gzip(request: &str) -> bool {
+    let mut gzip = None;
+    let mut wildcard = false;
+    for line in request
+        .split("\r\n")
+        .skip(1)
+        .take_while(|line| !line.is_empty())
+    {
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        if !name.eq_ignore_ascii_case("Accept-Encoding") {
+            continue;
+        }
+        for encoding in value.split(',') {
+            let mut parts = encoding.split(';');
+            let coding = parts.next().unwrap_or_default().trim();
+            let mut quality = 1.0;
+            for parameter in parts {
+                if let Some((name, value)) = parameter.split_once('=')
+                    && name.trim().eq_ignore_ascii_case("q")
+                {
+                    quality = value.trim().parse::<f32>().unwrap_or(0.0);
+                }
+            }
+            let accepted = quality > 0.0 && quality <= 1.0;
+            if coding.eq_ignore_ascii_case("gzip") {
+                gzip = Some(accepted);
+            } else if coding == "*" {
+                wildcard = accepted;
+            }
+        }
+    }
+    gzip.unwrap_or(wildcard)
+}
+
+fn write_response(
+    writer: &mut impl Write,
+    request: &str,
+    (headers, content): Response,
+) -> io::Result<()> {
+    let mut body = content.into_bytes();
+    let mut content_encoding = "";
+    if body.len() >= MIN_COMPRESSION_SIZE && accepts_gzip(request) {
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+        encoder.write_all(&body)?;
+        let compressed = encoder.finish()?;
+        if compressed.len() < body.len() {
+            body = compressed;
+            content_encoding = "Content-Encoding: gzip\r\n";
+        }
+    }
+
+    let headers = format!(
+        "{}\r\n{content_encoding}Vary: Accept-Encoding\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        headers.trim_end_matches("\r\n"),
+        body.len()
+    );
+    writer.write_all(headers.as_bytes())?;
+    writer.write_all(&body)
 }
 
 fn handle_request(request: &str, pool: &DatabasePool) -> Response {
@@ -142,4 +206,182 @@ fn handle_delete_request(
         return Ok((NOT_FOUND.to_string(), "User not found".to_string()));
     }
     Ok((OK_RESPONSE.to_string(), "User deleted".to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flate2::read::GzDecoder;
+
+    fn response_parts(response: &[u8]) -> (&str, &[u8]) {
+        let boundary = response
+            .windows(4)
+            .position(|bytes| bytes == b"\r\n\r\n")
+            .unwrap();
+        let headers = std::str::from_utf8(&response[..boundary]).unwrap();
+        let body = &response[boundary + 4..];
+        assert!(headers.contains(&format!("\r\nContent-Length: {}", body.len())));
+        assert!(headers.contains("\r\nVary: Accept-Encoding"));
+        assert!(headers.contains("\r\nConnection: close"));
+        (headers, body)
+    }
+
+    #[test]
+    fn gzip_negotiation_respects_client_preferences() {
+        for (headers, expected) in [
+            ("", false),
+            ("Accept-Encoding: br, deflate", false),
+            ("Accept-Encoding: gzip", true),
+            ("accept-encoding: GZIP; Q=0.5", true),
+            ("Accept-Encoding: gzip;q=0", false),
+            ("Accept-Encoding: gzip;q=0, *;q=1", false),
+            ("Accept-Encoding: *;q=0, gzip;q=1", true),
+            ("Accept-Encoding: *", true),
+            ("Accept-Encoding: gzip;q=invalid", false),
+            ("Accept-Encoding: gzip;q=2", false),
+            ("Accept-Encoding: gzip;q=-1", false),
+            ("Accept-Encoding: gzip;q=NaN", false),
+            ("Accept-Encoding: br\r\nAccept-Encoding: gzip", true),
+            ("X-Accept-Encoding: gzip", false),
+            ("\r\nAccept-Encoding: gzip", false),
+        ] {
+            let request = format!("GET /users HTTP/1.1\r\n{headers}\r\n\r\n");
+            assert_eq!(accepts_gzip(&request), expected, "{headers:?}");
+        }
+    }
+
+    #[test]
+    fn large_user_list_is_smaller_on_the_wire_without_losing_data() {
+        let users: Vec<User> = (1..=200)
+            .map(|id| User {
+                id: Some(id),
+                name: format!("k6-iteration-{id}"),
+                email: format!("k6-iteration-{id}@example.com"),
+            })
+            .collect();
+        let content = serde_json::to_string(&users).unwrap();
+        let request = "GET /users HTTP/1.1\r\nAccept-Encoding: gzip\r\n\r\n";
+        let mut response = Vec::new();
+        write_response(
+            &mut response,
+            request,
+            (OK_RESPONSE.to_string(), content.clone()),
+        )
+        .unwrap();
+
+        let (headers, body) = response_parts(&response);
+        assert!(headers.contains("\r\nContent-Encoding: gzip"));
+        let mut decoded = String::new();
+        GzDecoder::new(body).read_to_string(&mut decoded).unwrap();
+        assert_eq!(decoded, content);
+
+        let mut uncompressed = Vec::new();
+        write_response(
+            &mut uncompressed,
+            "GET /users HTTP/1.1\r\n\r\n",
+            (OK_RESPONSE.to_string(), content),
+        )
+        .unwrap();
+        assert!(
+            response.len() * 4 < uncompressed.len(),
+            "Expected at least a 4x wire-size reduction: {} vs {} bytes",
+            response.len(),
+            uncompressed.len()
+        );
+    }
+
+    #[test]
+    fn responses_stay_uncompressed_without_gzip_support() {
+        let content = "user data ".repeat(200);
+        for encoding in ["", "Accept-Encoding: br", "Accept-Encoding: gzip;q=0"] {
+            let mut response = Vec::new();
+            write_response(
+                &mut response,
+                &format!("GET /users HTTP/1.1\r\n{encoding}\r\n\r\n"),
+                (OK_RESPONSE.to_string(), content.clone()),
+            )
+            .unwrap();
+            let (headers, body) = response_parts(&response);
+            assert!(!headers.contains("Content-Encoding:"));
+            assert_eq!(body, content.as_bytes());
+        }
+    }
+
+    #[test]
+    fn compression_starts_at_one_kibibyte() {
+        for size in [MIN_COMPRESSION_SIZE - 1, MIN_COMPRESSION_SIZE] {
+            let content = "a".repeat(size);
+            let mut response = Vec::new();
+            write_response(
+                &mut response,
+                "GET /users HTTP/1.1\r\nAccept-Encoding: gzip\r\n\r\n",
+                (OK_RESPONSE.to_string(), content.clone()),
+            )
+            .unwrap();
+            let (headers, body) = response_parts(&response);
+            if size < MIN_COMPRESSION_SIZE {
+                assert!(!headers.contains("Content-Encoding:"));
+                assert_eq!(body, content.as_bytes());
+            } else {
+                assert!(headers.contains("\r\nContent-Encoding: gzip"));
+                let mut decoded = String::new();
+                GzDecoder::new(body).read_to_string(&mut decoded).unwrap();
+                assert_eq!(decoded, content);
+            }
+        }
+    }
+
+    #[test]
+    fn small_responses_preserve_status_location_and_body() {
+        for (headers, content) in [
+            (OK_RESPONSE, "User updated"),
+            (OK_RESPONSE, "User deleted"),
+            (OK_RESPONSE, "[]"),
+            (NOT_FOUND, "User not found"),
+            (INTERNAL_ERROR, "Internal error"),
+            (
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nLocation: /users/42\r\n\r\n",
+                "User created",
+            ),
+            (OK_RESPONSE, "na\u{ef}ve"),
+            (OK_RESPONSE, ""),
+        ] {
+            let mut response = Vec::new();
+            write_response(
+                &mut response,
+                "GET /users HTTP/1.1\r\nAccept-Encoding: gzip\r\n\r\n",
+                (headers.to_string(), content.to_string()),
+            )
+            .unwrap();
+            let (actual_headers, body) = response_parts(&response);
+            assert!(actual_headers.starts_with(headers.trim_end_matches("\r\n")));
+            assert!(!actual_headers.contains("Content-Encoding:"));
+            assert_eq!(body, content.as_bytes());
+        }
+    }
+
+    #[test]
+    fn response_write_errors_are_propagated() {
+        struct BrokenWriter;
+        impl Write for BrokenWriter {
+            fn write(&mut self, _buffer: &[u8]) -> io::Result<usize> {
+                Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "connection closed",
+                ))
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let error = write_response(
+            &mut BrokenWriter,
+            "GET /users HTTP/1.1\r\n\r\n",
+            (OK_RESPONSE.to_string(), "[]".to_string()),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+    }
 }
