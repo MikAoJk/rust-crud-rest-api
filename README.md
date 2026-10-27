@@ -34,7 +34,7 @@ or install it: https://curl.se/docs/install.html
 ### Build code
 Build the code without running it
 ```bash script
-cargo build
+cargo build --release
 ```
 
 ### Test code
@@ -65,7 +65,7 @@ docker compose up -d
 ```
 remember to take it down after use:
 ```bash script
-docker compose down
+docker compose down --volumes
 ```
 
 ##### 🧪 Test the applications endpoints
