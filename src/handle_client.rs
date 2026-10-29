@@ -98,6 +98,13 @@ fn write_response(
 }
 
 fn handle_request(request: &str, pool: &DatabasePool) -> Response {
+    if request.lines().next().is_some_and(|line| {
+        let mut parts = line.split_whitespace();
+        parts.next() == Some("GET") && parts.next() == Some("/metrics")
+    }) {
+        return handle_metrics_request().unwrap_or_else(error_response);
+    }
+
     let handler: Handler = match request {
         r if r.starts_with("POST /users") => handle_post_request,
         r if r.starts_with("GET /users/") => handle_get_request,
@@ -112,10 +119,21 @@ fn handle_request(request: &str, pool: &DatabasePool) -> Response {
         handler(request, &mut client)
     })();
 
-    result.unwrap_or_else(|error| {
-        eprintln!("Unable to handle request: {error}");
-        (INTERNAL_ERROR.to_string(), "Internal error".to_string())
-    })
+    result.unwrap_or_else(error_response)
+}
+
+fn error_response(error: Box<dyn std::error::Error>) -> Response {
+    eprintln!("Unable to handle request: {error}");
+    (INTERNAL_ERROR.to_string(), "Internal error".to_string())
+}
+
+fn handle_metrics_request() -> Result<Response, Box<dyn std::error::Error>> {
+    let metrics = crate::metrics::collect()?;
+    Ok((
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: no-store\r\n\r\n"
+            .to_string(),
+        serde_json::to_string(&metrics)?,
+    ))
 }
 
 fn get_id(request: &str) -> &str {
@@ -212,6 +230,39 @@ fn handle_delete_request(
 mod tests {
     use super::*;
     use flate2::read::GzDecoder;
+
+    #[test]
+    fn metrics_route_returns_process_metrics_without_a_database_connection() {
+        let manager = r2d2_postgres::PostgresConnectionManager::new(
+            "host=127.0.0.1 port=1 user=unused".parse().unwrap(),
+            postgres::NoTls,
+        );
+        let pool = DatabasePool::builder()
+            .max_size(1)
+            .min_idle(Some(0))
+            .build_unchecked(manager);
+        let request = "GET /metrics HTTP/1.1\r\n\r\n";
+        let response = handle_request(request, &pool);
+        let mut wire = Vec::new();
+        write_response(&mut wire, request, response).unwrap();
+        let (headers, body) = response_parts(&wire);
+        assert!(headers.starts_with("HTTP/1.1 200 OK\r\n"));
+        assert!(headers.contains("\r\nContent-Type: application/json"));
+        assert!(headers.contains("\r\nCache-Control: no-store"));
+        let metrics: serde_json::Value = serde_json::from_slice(body).unwrap();
+        assert_eq!(metrics["process_id"], std::process::id());
+        assert!(metrics["memory_rss_bytes"].as_u64().unwrap() > 0);
+        assert!(metrics["cpu_seconds_total"].as_f64().unwrap() >= 0.0);
+        assert!(metrics["sampled_at_unix_seconds"].as_f64().unwrap() > 0.0);
+
+        for request in [
+            "GET /metrics-extra HTTP/1.1\r\n\r\n",
+            "GET /metrics/ HTTP/1.1\r\n\r\n",
+            "POST /metrics HTTP/1.1\r\n\r\n",
+        ] {
+            assert_eq!(handle_request(request, &pool).0, NOT_FOUND);
+        }
+    }
 
     fn response_parts(response: &[u8]) -> (&str, &[u8]) {
         let boundary = response

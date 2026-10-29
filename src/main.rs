@@ -1,6 +1,7 @@
 mod database;
 mod environment_variables;
 mod handle_client;
+mod metrics;
 mod server;
 
 use crate::database::{create_database_pool, set_init_database_table};

@@ -1,24 +1,86 @@
 import http from 'k6/http';
-import { check, fail } from 'k6';
+import { check, fail, sleep } from 'k6';
 import exec from 'k6/execution';
+import { Counter, Trend } from 'k6/metrics';
 
+const stages = [
+  { duration: '30s', target: 20 },
+  { duration: '1m', target: 100 },
+  { duration: '2m', target: 100 },
+  { duration: '1m', target: 200 },
+  { duration: '2m', target: 200 },
+  { duration: '30s', target: 0 },
+];
+const durationSeconds = stages.reduce((total, stage) =>
+  total + parseInt(stage.duration, 10) * (stage.duration.endsWith('m') ? 60 : 1), 0);
 
 export const options = {
-  stages: [
-    { duration: '30s', target: 20 }, 
-    { duration: '1m', target: 100 }, 
-    { duration: '2m', target: 100 }, 
-    { duration: '1m', target: 200 },
-    { duration: '2m', target: 200 },
-    { duration: '30s', target: 0 },
-  ],
+  scenarios: {
+    crud: {
+      executor: 'ramping-vus',
+      startVUs: 1,
+      stages,
+    },
+    resources: {
+      executor: 'constant-vus',
+      vus: 1,
+      duration: `${durationSeconds}s`,
+      exec: 'sampleResources',
+    },
+  },
+  summaryTrendStats: ['min', 'avg', 'max', 'med', 'p(90)', 'p(95)'],
   thresholds: {
     checks: ['rate==1'],
     http_req_failed: ['rate==0'],
+    api_cpu_samples: ['count>0'],
   },
 };
 
 const baseUrl = (__ENV.BASE_URL || 'http://localhost:8080').replace(/\/+$/, '');
+const cpuUsage = new Trend('api_cpu_usage_percent');
+const memoryUsage = new Trend('api_memory_rss_mib');
+const cpuSamples = new Counter('api_cpu_samples');
+let previousMetrics;
+
+export function sampleResources() {
+  // Always pace the sampler, including failed requests or invalid metrics.
+  try {
+    const response = http.get(`${baseUrl}/metrics`, {
+      ...params('metrics', 'GET /metrics'),
+      timeout: '5s',
+    });
+    expect(response, 'metrics', 200);
+    const current = json(response, 'metrics');
+    if (!check(current, {
+      'metrics: valid process resource sample': (value) => value !== null
+          && Number.isInteger(value.process_id) && value.process_id > 0
+          && Number.isFinite(value.cpu_seconds_total) && value.cpu_seconds_total >= 0
+          && Number.isInteger(value.memory_rss_bytes) && value.memory_rss_bytes > 0
+          && Number.isFinite(value.sampled_at_unix_seconds) && value.sampled_at_unix_seconds > 0,
+    })) {
+      fail(`Invalid process resource metrics: ${response.body}`);
+    }
+
+    memoryUsage.add(current.memory_rss_bytes / 1024 ** 2);
+    const previous = previousMetrics;
+    previousMetrics = current;
+    if (previous) {
+      if (!check(current, {
+        'metrics: same process and increasing counters': (value) =>
+          value.process_id === previous.process_id
+            && value.cpu_seconds_total >= previous.cpu_seconds_total
+            && value.sampled_at_unix_seconds > previous.sampled_at_unix_seconds,
+      })) {
+        fail('API process restarted or resource counters are not monotonic');
+      }
+      cpuUsage.add(100 * (current.cpu_seconds_total - previous.cpu_seconds_total)
+        / (current.sampled_at_unix_seconds - previous.sampled_at_unix_seconds));
+      cpuSamples.add(1);
+    }
+  } finally {
+    sleep(1);
+  }
+}
 
 function params(operation, name) {
   return {
