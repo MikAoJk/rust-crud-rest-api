@@ -13,23 +13,20 @@ use std::net::TcpListener;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let environment_variables = get_environment_variables();
 
-    let (pool, listener) =
-        initialize_server(environment_variables.server_adress_and_port, || {
-            let pool = create_database_pool(environment_variables.databse_url)?;
-            {
-                let mut client = pool.get()?;
-                set_init_database_table(&mut client)?;
-            }
-            Ok(pool)
-        })?;
+    let (pool, listener) = initialize_server(environment_variables.server_adress_and_port, || {
+        let pool = create_database_pool(environment_variables.databse_url)?;
+        {
+            let mut client = pool.get()?;
+            set_init_database_table(&mut client)?;
+        }
+        Ok(pool)
+    })?;
     println!(
         "Server listening on {}",
         environment_variables.server_adress_and_port
     );
 
-    serve_connections(listener.incoming(), move |stream| {
-        handle_client(stream, &pool)
-    });
+    serve_connections(listener, move |request| handle_client(request, &pool))?;
     Ok(())
 }
 
@@ -51,8 +48,7 @@ mod tests {
     #[test]
     fn server_initialization_returns_database_and_bound_listener() {
         let (database, listener) =
-            initialize_server("127.0.0.1:0", || Ok(String::from("initialized database")))
-                .unwrap();
+            initialize_server("127.0.0.1:0", || Ok(String::from("initialized database"))).unwrap();
 
         assert_eq!(database, "initialized database");
         let address = listener.local_addr().unwrap();

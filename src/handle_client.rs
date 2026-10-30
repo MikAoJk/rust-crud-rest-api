@@ -2,12 +2,11 @@ use crate::database::DatabasePool;
 use flate2::{Compression, write::GzEncoder};
 use postgres::Client;
 use serde_derive::{Deserialize, Serialize};
-use std::io::{self, Read, Write};
-use std::net::TcpStream;
+use std::io::{self, Write};
 use std::time::Duration;
 
 const MIN_COMPRESSION_SIZE: usize = 1024;
-const CLIENT_IO_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const CLIENT_IO_TIMEOUT: Duration = Duration::from_secs(15);
 const OK_RESPONSE: &str = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n";
 const NOT_FOUND: &str = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
 const INTERNAL_ERROR: &str = "HTTP/1.1 500 INTERNAL ERROR\r\n\r\n";
@@ -23,27 +22,18 @@ struct User {
 type Response = (String, String);
 type Handler = fn(&str, &mut Client) -> Result<Response, Box<dyn std::error::Error>>;
 
-pub fn handle_client(mut stream: TcpStream, pool: &DatabasePool) {
-    if let Err(error) = stream
-        .set_read_timeout(Some(CLIENT_IO_TIMEOUT))
-        .and_then(|()| stream.set_write_timeout(Some(CLIENT_IO_TIMEOUT)))
-    {
-        eprintln!("Unable to configure client connection: {error}");
-        return;
-    }
+pub fn handle_client(request: &str, pool: &DatabasePool) -> io::Result<Vec<u8>> {
+    let response = handle_request(request, pool);
+    let mut wire = Vec::new();
+    write_response(&mut wire, request, response)?;
+    Ok(wire)
+}
 
-    let mut buffer = [0; 1024];
-
-    match stream.read(&mut buffer) {
-        Ok(size) => {
-            let request = String::from_utf8_lossy(&buffer[..size]);
-            let response = handle_request(&request, pool);
-            if let Err(error) = write_response(&mut stream, &request, response) {
-                eprintln!("Unable to write response: {error}");
-            }
-        }
-        Err(error) => eprintln!("Unable to read stream: {error}"),
-    }
+pub(crate) fn is_metrics_request(request: &str) -> bool {
+    request.lines().next().is_some_and(|line| {
+        let mut parts = line.split_whitespace();
+        parts.next() == Some("GET") && parts.next() == Some("/metrics")
+    })
 }
 
 fn accepts_gzip(request: &str) -> bool {
@@ -109,10 +99,7 @@ fn write_response(
 }
 
 fn handle_request(request: &str, pool: &DatabasePool) -> Response {
-    if request.lines().next().is_some_and(|line| {
-        let mut parts = line.split_whitespace();
-        parts.next() == Some("GET") && parts.next() == Some("/metrics")
-    }) {
+    if is_metrics_request(request) {
         return handle_metrics_request().unwrap_or_else(error_response);
     }
 
@@ -247,6 +234,7 @@ fn handle_delete_request(
 mod tests {
     use super::*;
     use flate2::read::GzDecoder;
+    use std::io::Read;
 
     #[test]
     fn metrics_route_returns_process_metrics_without_a_database_connection() {

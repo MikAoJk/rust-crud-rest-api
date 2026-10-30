@@ -4,7 +4,7 @@ use r2d2_postgres::PostgresConnectionManager;
 use std::time::Duration;
 
 pub const MAX_CONNECTIONS: u32 = 32;
-const CONNECTION_TIMEOUT: Duration = Duration::from_secs(5);
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(15);
 pub type DatabasePool = r2d2::Pool<PostgresConnectionManager<NoTls>>;
 
 pub fn set_init_database_table(client: &mut Client) -> Result<(), PostgresError> {
