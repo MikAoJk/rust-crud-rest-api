@@ -2,7 +2,7 @@ use postgres::Error as PostgresError;
 use postgres::{Client, NoTls};
 use r2d2_postgres::PostgresConnectionManager;
 
-pub const MAX_CONNECTIONS: u32 = 64;
+pub const MAX_CONNECTIONS: u32 = 32;
 pub type DatabasePool = r2d2::Pool<PostgresConnectionManager<NoTls>>;
 
 pub fn set_init_database_table(client: &mut Client) -> Result<(), PostgresError> {
