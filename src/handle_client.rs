@@ -4,11 +4,14 @@ use postgres::Client;
 use serde_derive::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
+use std::time::Duration;
 
 const MIN_COMPRESSION_SIZE: usize = 1024;
+const CLIENT_IO_TIMEOUT: Duration = Duration::from_secs(5);
 const OK_RESPONSE: &str = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n";
 const NOT_FOUND: &str = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
 const INTERNAL_ERROR: &str = "HTTP/1.1 500 INTERNAL ERROR\r\n\r\n";
+const SERVICE_UNAVAILABLE: &str = "HTTP/1.1 503 SERVICE UNAVAILABLE\r\nRetry-After: 1\r\n\r\n";
 
 #[derive(Serialize, Deserialize)]
 struct User {
@@ -21,6 +24,14 @@ type Response = (String, String);
 type Handler = fn(&str, &mut Client) -> Result<Response, Box<dyn std::error::Error>>;
 
 pub fn handle_client(mut stream: TcpStream, pool: &DatabasePool) {
+    if let Err(error) = stream
+        .set_read_timeout(Some(CLIENT_IO_TIMEOUT))
+        .and_then(|()| stream.set_write_timeout(Some(CLIENT_IO_TIMEOUT)))
+    {
+        eprintln!("Unable to configure client connection: {error}");
+        return;
+    }
+
     let mut buffer = [0; 1024];
 
     match stream.read(&mut buffer) {
@@ -114,12 +125,18 @@ fn handle_request(request: &str, pool: &DatabasePool) -> Response {
         _ => return (NOT_FOUND.to_string(), "404 not found".to_string()),
     };
 
-    let result = (|| {
-        let mut client = pool.get()?;
-        handler(request, &mut client)
-    })();
+    let mut client = match pool.get() {
+        Ok(client) => client,
+        Err(error) => {
+            eprintln!("Unable to get database connection: {error}");
+            return (
+                SERVICE_UNAVAILABLE.to_string(),
+                "Database temporarily unavailable".to_string(),
+            );
+        }
+    };
 
-    result.unwrap_or_else(error_response)
+    handler(request, &mut client).unwrap_or_else(error_response)
 }
 
 fn error_response(error: Box<dyn std::error::Error>) -> Response {
@@ -262,6 +279,24 @@ mod tests {
         ] {
             assert_eq!(handle_request(request, &pool).0, NOT_FOUND);
         }
+    }
+
+    #[test]
+    fn database_connection_failures_return_service_unavailable() {
+        let manager = r2d2_postgres::PostgresConnectionManager::new(
+            "host=127.0.0.1 port=1 user=unused".parse().unwrap(),
+            postgres::NoTls,
+        );
+        let pool = DatabasePool::builder()
+            .max_size(1)
+            .min_idle(Some(0))
+            .connection_timeout(Duration::from_millis(10))
+            .build_unchecked(manager);
+
+        let response = handle_request("GET /users HTTP/1.1\r\n\r\n", &pool);
+
+        assert_eq!(response.0, SERVICE_UNAVAILABLE);
+        assert_eq!(response.1, "Database temporarily unavailable");
     }
 
     fn response_parts(response: &[u8]) -> (&str, &[u8]) {
