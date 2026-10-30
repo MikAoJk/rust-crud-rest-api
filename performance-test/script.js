@@ -7,8 +7,8 @@ const stages = [
   { duration: '30s', target: 20 },
   { duration: '1m', target: 100 },
   { duration: '2m', target: 100 },
-  { duration: '1m', target: 500 },
-  { duration: '2m', target: 500 },
+  { duration: '1m', target: 1000 },
+  { duration: '2m', target: 1000 },
   { duration: '30s', target: 0 },
 ];
 const durationSeconds = stages.reduce((total, stage) =>

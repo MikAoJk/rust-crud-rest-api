@@ -1,6 +1,7 @@
 use crate::database::DatabasePool;
 use flate2::{Compression, write::GzEncoder};
 use postgres::Client;
+use postgres::types::Type;
 use serde_derive::{Deserialize, Serialize};
 use std::io::{self, Write};
 use std::time::Duration;
@@ -159,9 +160,9 @@ fn handle_post_request(
     client: &mut Client,
 ) -> Result<Response, Box<dyn std::error::Error>> {
     let user = get_user_request_body(request)?;
-    let row = client.query_one(
+    let row = client.query_typed_one(
         "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id",
-        &[&user.name, &user.email],
+        &[(&user.name, Type::VARCHAR), (&user.email, Type::VARCHAR)],
     )?;
     let id: i32 = row.get(0);
     Ok((
@@ -177,7 +178,10 @@ fn handle_get_request(
     client: &mut Client,
 ) -> Result<Response, Box<dyn std::error::Error>> {
     let id = get_id(request).parse::<i32>()?;
-    match client.query_opt("SELECT id, name, email FROM users WHERE id = $1", &[&id])? {
+    match client.query_typed_opt(
+        "SELECT id, name, email FROM users WHERE id = $1",
+        &[(&id, Type::INT4)],
+    )? {
         Some(row) => {
             let user = User {
                 id: row.get(0),
@@ -195,7 +199,7 @@ fn handle_get_all_request(
     client: &mut Client,
 ) -> Result<Response, Box<dyn std::error::Error>> {
     let mut users = Vec::new();
-    for row in client.query("SELECT id, name, email FROM users", &[])? {
+    for row in client.query_typed("SELECT id, name, email FROM users", &[])? {
         users.push(User {
             id: row.get(0),
             name: row.get(1),
@@ -211,9 +215,13 @@ fn handle_put_request(
 ) -> Result<Response, Box<dyn std::error::Error>> {
     let id = get_id(request).parse::<i32>()?;
     let user = get_user_request_body(request)?;
-    client.execute(
+    client.execute_typed(
         "UPDATE users SET name = $1, email = $2 WHERE id = $3",
-        &[&user.name, &user.email, &id],
+        &[
+            (&user.name, Type::VARCHAR),
+            (&user.email, Type::VARCHAR),
+            (&id, Type::INT4),
+        ],
     )?;
     Ok((OK_RESPONSE.to_string(), "User updated".to_string()))
 }
@@ -223,7 +231,8 @@ fn handle_delete_request(
     client: &mut Client,
 ) -> Result<Response, Box<dyn std::error::Error>> {
     let id = get_id(request).parse::<i32>()?;
-    let rows_affected = client.execute("DELETE FROM users WHERE id = $1", &[&id])?;
+    let rows_affected =
+        client.execute_typed("DELETE FROM users WHERE id = $1", &[(&id, Type::INT4)])?;
     if rows_affected == 0 {
         return Ok((NOT_FOUND.to_string(), "User not found".to_string()));
     }
@@ -235,6 +244,81 @@ mod tests {
     use super::*;
     use flate2::read::GzDecoder;
     use std::io::Read;
+
+    #[test]
+    #[ignore = "requires TEST_DATABASE_URL pointing to a PostgreSQL database"]
+    fn typed_queries_preserve_crud_responses_and_parameter_values() {
+        let database_url = std::env::var("TEST_DATABASE_URL").expect("Set TEST_DATABASE_URL");
+        let mut client = Client::connect(&database_url, postgres::NoTls).unwrap();
+        client
+            .batch_execute(
+                "CREATE TEMP TABLE users (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR NOT NULL,
+                    email VARCHAR NOT NULL
+                )",
+            )
+            .unwrap();
+        let user = User {
+            id: None,
+            name: "O'Reilly".to_string(),
+            email: "reader@example.com".to_string(),
+        };
+        let request = format!(
+            "POST /users HTTP/1.1\r\n\r\n{}",
+            serde_json::to_string(&user).unwrap()
+        );
+        let created = handle_post_request(&request, &mut client).unwrap();
+        assert_eq!(created.1, "User created");
+        assert!(created.0.contains("Location: /users/1\r\n"));
+
+        let request = "GET /users/1 HTTP/1.1\r\n\r\n";
+        let read = handle_get_request(request, &mut client).unwrap();
+        assert_eq!(read.0, OK_RESPONSE);
+        let read: User = serde_json::from_str(&read.1).unwrap();
+        assert_eq!(read.id, Some(1));
+        assert_eq!(read.name, user.name);
+        assert_eq!(read.email, user.email);
+        let listed = handle_get_all_request("GET /users HTTP/1.1\r\n\r\n", &mut client).unwrap();
+        assert_eq!(listed.0, OK_RESPONSE);
+        let users: Vec<User> = serde_json::from_str(&listed.1).unwrap();
+        assert_eq!(users.len(), 1);
+        assert_eq!(users[0].id, Some(1));
+        assert_eq!(users[0].name, user.name);
+        assert_eq!(users[0].email, user.email);
+
+        let updated = handle_put_request(
+            "PUT /users/1 HTTP/1.1\r\n\r\n{\"name\":\"Updated reader\",\"email\":\"updated@example.com\"}",
+            &mut client,
+        )
+        .unwrap();
+        assert_eq!(
+            updated,
+            (OK_RESPONSE.to_string(), "User updated".to_string())
+        );
+        let read = handle_get_request(request, &mut client).unwrap();
+        let read: User = serde_json::from_str(&read.1).unwrap();
+        assert_eq!(read.name, "Updated reader");
+        assert_eq!(read.email, "updated@example.com");
+
+        let deleted =
+            handle_delete_request("DELETE /users/1 HTTP/1.1\r\n\r\n", &mut client).unwrap();
+        assert_eq!(
+            deleted,
+            (OK_RESPONSE.to_string(), "User deleted".to_string())
+        );
+        for response in [
+            handle_get_request(request, &mut client).unwrap(),
+            handle_delete_request("DELETE /users/1 HTTP/1.1\r\n\r\n", &mut client).unwrap(),
+        ] {
+            assert_eq!(
+                response,
+                (NOT_FOUND.to_string(), "User not found".to_string())
+            );
+        }
+        let listed = handle_get_all_request("GET /users HTTP/1.1\r\n\r\n", &mut client).unwrap();
+        assert_eq!(listed.1, "[]");
+    }
 
     #[test]
     fn metrics_route_returns_process_metrics_without_a_database_connection() {

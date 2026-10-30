@@ -14,3 +14,4 @@ serde_derive = "1.0.229"
 flate2 = "1.1.10"
 sysinfo = { version = "0.40.0", default-features = false, features = ["system"] }
 tokio = { version = "1.54.1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+socket2 = "0.6.5"

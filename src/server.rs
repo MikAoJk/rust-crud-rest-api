@@ -2,20 +2,26 @@ use crate::handle_client::{CLIENT_IO_TIMEOUT, is_metrics_request};
 use std::io;
 use std::net::TcpListener;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
 
-const WORKER_COUNT: usize = 32;
+const WORKER_COUNT: usize = 64;
 const METRICS_WORKER_COUNT: usize = 2;
+const MAX_IN_FLIGHT_CONNECTIONS: usize = 256;
+const CONNECTION_BACKLOG: i32 = 1024;
+const ACCEPT_RETRY_DELAY: Duration = Duration::from_millis(100);
 const MAX_REQUEST_SIZE: usize = 64 * 1024;
 
 pub fn serve_connections(
     listener: TcpListener,
     handler: impl Fn(&str) -> io::Result<Vec<u8>> + Send + Sync + 'static,
 ) -> io::Result<()> {
+    // Queue connection bursts in the kernel without opening more client descriptors.
+    socket2::SockRef::from(&listener).listen(CONNECTION_BACKLOG)?;
     listener.set_nonblocking(true)?;
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -35,8 +41,17 @@ async fn serve(
 
     loop {
         tokio::select! {
-            accepted = listener.accept() => {
-                let (stream, _) = accepted?;
+            accepted = listener.accept(), if connections.len() < MAX_IN_FLIGHT_CONNECTIONS => {
+                let (stream, _) = match accepted {
+                    Ok(connection) => connection,
+                    // Unix EMFILE/ENFILE can clear as existing connections finish.
+                    Err(error) if cfg!(unix) && matches!(error.raw_os_error(), Some(23 | 24)) => {
+                        eprintln!("Unable to accept connection; retrying in {ACCEPT_RETRY_DELAY:?}: {error}");
+                        tokio::time::sleep(ACCEPT_RETRY_DELAY).await;
+                        continue;
+                    }
+                    Err(error) => return Err(error),
+                };
                 let handler = Arc::clone(&handler);
                 let workers = Arc::clone(&workers);
                 let metrics_workers = Arc::clone(&metrics_workers);
@@ -165,7 +180,6 @@ async fn read_request(reader: &mut (impl AsyncRead + Unpin)) -> io::Result<Strin
 mod tests {
     use super::*;
     use std::sync::{Condvar, Mutex};
-    use std::time::Duration;
     use tokio::sync::mpsc;
 
     struct ReleaseWorkers(Arc<(Mutex<bool>, Condvar)>);
@@ -175,6 +189,123 @@ mod tests {
             *self.0.0.lock().unwrap() = true;
             self.0.1.notify_all();
         }
+    }
+
+    #[tokio::test]
+    async fn connection_limit_backpressures_slow_clients_and_recovers() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(serve(listener, |_| {
+            Ok(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec())
+        }));
+
+        let mut clients = Vec::new();
+        for _ in 0..MAX_IN_FLIGHT_CONNECTIONS {
+            let mut client = timeout(Duration::from_secs(5), TcpStream::connect(address))
+                .await
+                .unwrap()
+                .unwrap();
+            client.write_all(b"GET /met").await.unwrap();
+            clients.push(client);
+        }
+
+        let mut queued = TcpStream::connect(address).await.unwrap();
+        queued
+            .write_all(b"GET /metrics HTTP/1.1\r\n\r\n")
+            .await
+            .unwrap();
+        let mut response = Vec::new();
+        assert!(
+            timeout(
+                Duration::from_millis(100),
+                queued.read_to_end(&mut response)
+            )
+            .await
+            .is_err(),
+            "Requests beyond the connection limit must wait in the TCP backlog"
+        );
+        assert!(response.is_empty());
+        assert!(!server.is_finished());
+
+        drop(clients.pop());
+        timeout(Duration::from_secs(5), queued.read_to_end(&mut response))
+            .await
+            .expect("A released connection slot must allow the next request through")
+            .unwrap();
+        assert!(response.starts_with(b"HTTP/1.1 200 OK\r\n"));
+        assert!(!server.is_finished());
+
+        server.abort();
+        assert!(server.await.unwrap_err().is_cancelled());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn descriptor_exhaustion_does_not_stop_server() {
+        const CHILD_ENV: &str = "RUST_CRUD_TEST_DESCRIPTOR_EXHAUSTION";
+        const TEST_NAME: &str = "server::tests::descriptor_exhaustion_does_not_stop_server";
+        if std::env::var_os(CHILD_ENV).is_none() {
+            let output = std::process::Command::new("sh")
+                .args(["-c", "ulimit -n 128 && exec \"$@\"", "sh"])
+                .arg(std::env::current_exe().unwrap())
+                .args(["--exact", TEST_NAME, "--nocapture"])
+                .env(CHILD_ENV, "1")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "Descriptor exhaustion subprocess failed:\n{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                String::from_utf8_lossy(&output.stderr)
+                    .contains("Unable to accept connection; retrying"),
+                "The subprocess must exercise the accept-error recovery path"
+            );
+            return;
+        }
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut client = TcpStream::connect(listener.local_addr().unwrap())
+            .await
+            .unwrap();
+        client
+            .write_all(b"GET /metrics HTTP/1.1\r\n\r\n")
+            .await
+            .unwrap();
+        let server = tokio::spawn(serve(listener, |_| {
+            Ok(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec())
+        }));
+
+        let mut files = Vec::new();
+        loop {
+            match std::fs::File::open("/dev/null") {
+                Ok(file) => files.push(file),
+                Err(error) => {
+                    assert_eq!(error.raw_os_error(), Some(24));
+                    break;
+                }
+            }
+        }
+        assert!(!files.is_empty());
+        tokio::time::sleep(ACCEPT_RETRY_DELAY * 3).await;
+        assert!(
+            !server.is_finished(),
+            "EMFILE must not stop the accept loop"
+        );
+
+        drop(files);
+        let mut response = Vec::new();
+        timeout(Duration::from_secs(5), client.read_to_end(&mut response))
+            .await
+            .expect("The server must recover once descriptors are available")
+            .unwrap();
+        assert!(response.starts_with(b"HTTP/1.1 200 OK\r\n"));
+        assert!(!server.is_finished());
+
+        server.abort();
+        assert!(server.await.unwrap_err().is_cancelled());
     }
 
     #[tokio::test]
@@ -220,7 +351,7 @@ mod tests {
                 .unwrap()
                 .unwrap();
         }
-        for _ in 0..128 {
+        for _ in 0..(MAX_IN_FLIGHT_CONNECTIONS - 2 * WORKER_COUNT - 1) {
             let mut client = TcpStream::connect(address).await.unwrap();
             client
                 .write_all(b"GET /users HTTP/1.1\r\n\r\n")
