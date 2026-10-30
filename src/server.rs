@@ -1,20 +1,21 @@
-use crate::database::MAX_CONNECTIONS;
 use std::io;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 
+const WORKER_COUNT: usize = 32;
+const REQUEST_QUEUE_CAPACITY: usize = 128;
+
 pub fn serve_connections(
     incoming: impl Iterator<Item = io::Result<TcpStream>>,
     handler: impl Fn(TcpStream) + Send + Sync + 'static,
 ) {
-    let worker_count = MAX_CONNECTIONS as usize;
-    let (sender, receiver) = mpsc::sync_channel::<TcpStream>(worker_count);
+    let (sender, receiver) = mpsc::sync_channel::<TcpStream>(REQUEST_QUEUE_CAPACITY);
     let receiver = Arc::new(Mutex::new(receiver));
     let handler = Arc::new(handler);
-    let mut workers = Vec::with_capacity(worker_count);
+    let mut workers = Vec::with_capacity(WORKER_COUNT);
 
-    for _ in 0..worker_count {
+    for _ in 0..WORKER_COUNT {
         let receiver = Arc::clone(&receiver);
         let handler = Arc::clone(&handler);
         workers.push(thread::spawn(move || {
